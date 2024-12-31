@@ -1,0 +1,52 @@
+buildscript {
+    ext.kotlin_version = '1.9.22'  // Cập nhật version Kotlin
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.google.gms:google-services:4.4.2' // Cập nhật Google Services
+    }
+}
+
+plugins {
+    id "com.android.application"
+    id 'com.google.gms.google-services'
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace = "com.example.bai5"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17 // Cập nhật lên Java 17
+        targetCompatibility JavaVersion.VERSION_17 // Cập nhật lên Java 17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17' // Cập nhật lên Java 17
+    }
+
+    defaultConfig {
+        applicationId = "com.example.bai5"
+        minSdk = 23
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}

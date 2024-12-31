@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "608265253829",
+    "project_id": "hiuproject-9609c",
+    "storage_bucket": "hiuproject-9609c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:608265253829:android:14e96f44f4a855f8ef51ac",
+        "android_client_info": {
+          "package_name": "com.example.bai5"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0YLyqefhnQUmM5X9vJh7qgvMi8lq3Yhs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
