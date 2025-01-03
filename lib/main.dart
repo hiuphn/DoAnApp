@@ -3,11 +3,13 @@ import 'package:bai5/Component/home.dart';
 import 'package:bai5/Component/loading_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_file.dart';
 import 'Admin/Blog.dart';
 import 'Admin/Habit.dart';
 import 'Admin/Habit_categories.dart';
 import 'Admin/admin_screen.dart';
 import 'Bar/EditHabitScreen.dart';
+import 'Bar/habit_screen.dart';
 import 'Component/LoginFirebase.dart';
 import 'Component/dashboard_screen.dart';
 import 'Component/profile_screen.dart';
@@ -19,6 +21,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   runApp(MyApp());
 }
 
@@ -33,7 +36,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: HabitCategoryScreen(),
+      home: BaseScreen(),
       routes: {
         '/profile': (context) => Profile(
           name: 'Phạm Huỳnh Ngọc Hiếu',
