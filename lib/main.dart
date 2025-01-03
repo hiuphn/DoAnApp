@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: HabitCategoryScreen(),
+      home: BaseScreen(),
       routes: {
         '/profile': (context) => Profile(
           name: 'Phạm Huỳnh Ngọc Hiếu',
