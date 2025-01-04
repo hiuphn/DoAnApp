@@ -158,7 +158,9 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
   final TextEditingController _goalController = TextEditingController();
   final TextEditingController _timesController = TextEditingController();
   final TextEditingController _minutesController = TextEditingController();
-
+  TimeOfDay _morningTime = TimeOfDay(hour: 0, minute: 0);
+  TimeOfDay _afternoonTime = TimeOfDay(hour: 12, minute: 0);
+  TimeOfDay _eveningTime = TimeOfDay(hour: 17, minute: 0);
 
   String? _habitId;
   bool _isSaving = false;
@@ -213,9 +215,31 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
         _loadHabitData();
       }
     }
-
+    _loadTimesFromFirebase();
+  }
+  Future<void> _loadTimesFromFirebase() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('settings')
+          .doc('times')
+          .get();
+      if (doc.exists) {
+        final data = doc.data();
+        setState(() {
+          _morningTime = _parseTime(data?['morningTime'] ?? '09:00');
+          _afternoonTime = _parseTime(data?['afternoonTime'] ?? '14:00');
+          _eveningTime = _parseTime(data?['eveningTime'] ?? '20:00');
+        });
+      }
+    } catch (e) {
+      print("Error loading times from Firebase: $e");
+    }
   }
 
+  TimeOfDay _parseTime(String time) {
+    final parts = time.split(':');
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  }
   Future<void> _loadHabitData() async {
     try {
       final habits = await FirebaseFirestore.instance
@@ -265,7 +289,6 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
       final bool? granted = await flutterLocalNotificationsPlugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.areNotificationsEnabled();
-
       if (granted  ?? false) {
         // Tạo ID duy nhất cho mỗi thông báo
         final int notificationId = time.hour * 60 + time.minute;
@@ -392,80 +415,92 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
 
     final now = DateTime.now(); // Lấy thời gian hiện tại
 
+    // Nếu có thời gian tùy chỉnh trong reminderTimes
+    if (reminderTimes.isNotEmpty) {
+      for (var time in reminderTimes) {
+        final title = 'Nhắc nhở: ${_habitNameController.text}';
+        final body = 'Đã đến giờ thực hiện thói quen "${_habitNameController.text}"!';
+        await scheduleNotification(title, body, time); // Lên lịch cho từng thời gian cụ thể
+      }
+      return; // Không cần xử lý thêm
+    }
+
+    // Xử lý theo buổi sáng, chiều, tối
+    if (timeOfDay.isEmpty) {
+      print('Không có buổi hoặc thời gian nào được chọn. Không tạo thông báo.');
+      return; // Không lên lịch nếu không có thông tin
+    }
+
+    // Lên lịch theo ngày, tuần hoặc tháng
     if (frequency == 'weekly' || frequency == 'monthly') {
-      // Lặp qua các ngày trong tuần
       for (int dayIndex = 0; dayIndex < selectedDays.length; dayIndex++) {
-        // Kiểm tra nếu ngày hiện tại là ngày không được chọn
         if (now.weekday == (dayIndex + 1) && !selectedDays[dayIndex]) {
           print('Hôm nay là ngày không được chọn, không tạo thông báo.');
           continue; // Bỏ qua logic tạo thông báo cho ngày này
         }
-        // Chỉ tiếp tục xử lý nếu ngày này được chọn
-        else if (now.weekday == (dayIndex + 1) && selectedDays[dayIndex]) {
+
+        final nextDay = now.add(
+          Duration(days: (dayIndex + 1 - now.weekday + 7) % 7),
+        );
+        if (now.weekday == (dayIndex + 1) && selectedDays[dayIndex]) {
           if (selectedDays[dayIndex]) {
-            for (var reminder in reminderTimes) {
+            if (nextDay.isAfter(now) || nextDay.isAtSameMomentAs(now)) {
               for (var timePeriod in timeOfDay) {
-                // Tính ngày thông báo
-                final nextDay = now.add(
-                  Duration(days: (dayIndex + 1 - now.weekday + 7) % 7),
-                );
+                final title = 'Nhắc nhở: ${_habitNameController.text}';
+                final body =
+                    'weekly Đã đến giờ thực hiện thói quen "${_habitNameController
+                    .text}" vào $timePeriod!';
 
-                // Chỉ tạo thông báo cho ngày trong tương lai hoặc hôm nay (nếu giờ còn phù hợp)
-                if (nextDay.isAfter(now) || (nextDay.isAtSameMomentAs(now))) {
-                  final title = 'Nhắc nhở: ${_habitNameController.text}';
-                  final body =
-                      'weekly Đã đến giờ thực hiện thói quen "${_habitNameController.text}" vào $timePeriod!';
+                TimeOfDay scheduledTime;
 
-                  TimeOfDay scheduledTime = TimeOfDay(hour: reminder.hour, minute: reminder.minute);
-
-                  // Điều chỉnh thời gian theo buổi
-                  switch (timePeriod) {
-                    case 'morning': // Sáng
-                      scheduledTime = TimeOfDay(hour: reminder.hour, minute: reminder.minute);
-                      break;
-                    case 'afternoon': // Chiều
-                      scheduledTime = TimeOfDay(hour: (reminder.hour + 6) % 24, minute: reminder.minute);
-                      break;
-                    case 'evening': // Tối
-                      scheduledTime = TimeOfDay(hour: (reminder.hour + 12) % 24, minute: reminder.minute);
-                      break;
-                  }
-
-                  await scheduleNotification(title, body, scheduledTime);
+                switch (timePeriod) {
+                  case 'morning':
+                    scheduledTime = _morningTime;
+                    break;
+                  case 'afternoon':
+                    scheduledTime = _afternoonTime;
+                    break;
+                  case 'evening':
+                    scheduledTime = _eveningTime;
+                    break;
+                  default:
+                    print('Thời gian không hợp lệ cho $timePeriod.');
+                    continue;
                 }
+
+                await scheduleNotification(title, body, scheduledTime);
               }
             }
           }
         }
       }
     } else if (frequency == 'daily') {
-      for (var reminder in reminderTimes) {
-        for (var timePeriod in timeOfDay) {
-          final title = 'Nhắc nhở: ${_habitNameController.text}';
-          final body =
-              'daily Đã đến giờ thực hiện thói quen "${_habitNameController.text}" vào $timePeriod!';
+      for (var timePeriod in timeOfDay) {
+        final title = 'Nhắc nhở: ${_habitNameController.text}';
+        final body =
+            'daily Đã đến giờ thực hiện thói quen "${_habitNameController.text}" vào $timePeriod!';
 
-          TimeOfDay scheduledTime = TimeOfDay(hour: reminder.hour, minute: reminder.minute);
+        TimeOfDay scheduledTime;
 
-          // Điều chỉnh thời gian theo buổi
-          switch (timePeriod) {
-            case 'morning': // Sáng
-              scheduledTime = TimeOfDay(hour: reminder.hour, minute: reminder.minute);
-              break;
-            case 'afternoon': // Chiều
-              scheduledTime = TimeOfDay(hour: (reminder.hour ) % 24, minute: reminder.minute + 1);
-              break;
-            case 'evening': // Tối
-              scheduledTime = TimeOfDay(hour: (reminder.hour ) % 24, minute: reminder.minute + 2);
-              break;
-          }
-          await scheduleNotification(title, body, scheduledTime);
+        switch (timePeriod) {
+          case 'morning':
+            scheduledTime = _morningTime;
+            break;
+          case 'afternoon':
+            scheduledTime = _afternoonTime;
+            break;
+          case 'evening':
+            scheduledTime = _eveningTime;
+            break;
+          default:
+            print('Thời gian không hợp lệ cho $timePeriod.');
+            continue;
         }
+
+        await scheduleNotification(title, body, scheduledTime);
       }
     }
   }
-
-
 
 
 
@@ -1235,44 +1270,43 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
   Future<void> _showTimePicker() async {
     if (reminderTimes.length >= 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tối đa 5 thời gian nhắc nhở')),
+        const SnackBar(content: Text('Tối đa 10 thời gian nhắc nhở')),
       );
       return;
     }
+
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: selectedTime,
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
+          data: ThemeData.dark().copyWith(
             timePickerTheme: TimePickerThemeData(
               backgroundColor: surfaceColor,
               hourMinuteTextColor: Colors.white,
               dialBackgroundColor: backgroundColor,
               dialHandColor: currentColor,
-              entryModeIconColor: currentColor,
             ),
           ),
           child: child!,
         );
       },
     );
+
     if (picked != null) {
       setState(() {
-        selectedTime = picked;
-        if (!reminderTimes.contains(picked)) {
-          reminderTimes.add(picked);
-          _sortReminderTimes();
-        }
-        else{
+        if (!_isTimeExists(picked)) {
+          reminderTimes.add(picked); // Thêm thời gian người dùng chọn
+          _sortReminderTimes(); // Sắp xếp danh sách
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Thời gian này đã tồn tại')),
+            const SnackBar(content: Text('Thời gian này đã tồn tại')),
           );
-          return;
         }
       });
     }
   }
+
 
   Widget _buildOptionButton({
     required IconData icon,
@@ -1419,6 +1453,7 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Tiêu đề và Switch bật/tắt nhắc nhở
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1446,6 +1481,22 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
             ),
             child: Column(
               children: [
+                // Hiển thị thông báo nếu chưa chọn thời gian nhắc nhở
+                if (reminderTimes.isEmpty && timeOfDay.isEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Bạn chưa chọn buổi nào (Sáng, Chiều, Tối) hoặc thêm thời gian nhắc nhở. Vui lòng chọn hoặc thêm thời gian để kích hoạt thông báo.',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const Divider(color: Colors.grey),
+                ],
+                // Hiển thị danh sách thời gian nhắc nhở tùy chỉnh
                 ...reminderTimes.map((time) => ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   leading: Icon(Icons.access_time, color: currentColor),
@@ -1465,6 +1516,18 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
                     },
                   ),
                 )),
+                const Divider(color: Colors.grey),
+                // Hiển thị các tùy chọn sáng, chiều, tối
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Chọn buổi nhắc nhở:',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
                 Row(
                   children: [
                     _buildOptionButton(
@@ -1511,6 +1574,8 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
                     ),
                   ],
                 ),
+                const Divider(color: Colors.grey),
+                // Nút thêm thời gian tùy chỉnh
                 TextButton.icon(
                   onPressed: _showTimePicker,
                   icon: Icon(Icons.add, color: currentColor),
@@ -1529,6 +1594,8 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
       ],
     );
   }
+
+
 
 
 }

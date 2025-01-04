@@ -123,7 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen123> {
       ),
     );
   }
-
+  
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
