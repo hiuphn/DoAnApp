@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../Bar/EditHabitScreen.dart';
+import '../Settings/setting_screen.dart';
 
 // Model HabitData
 class HabitData {
@@ -424,7 +425,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: Icon(Icons.settings, color: Colors.white),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => SettingsScreen123()),
+                      ).then((_) => _loadHabits());
+            },
           ),
         ],
       ),

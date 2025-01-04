@@ -44,6 +44,9 @@ dependencies:
   path: ^1.8.3
   cached_network_image: ^3.3.0
   intl: ^0.20.1
+  shared_preferences: ^2.3.5
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

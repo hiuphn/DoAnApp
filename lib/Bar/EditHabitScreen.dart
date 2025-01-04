@@ -877,12 +877,19 @@
 //
 // }
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import '../main.dart';
+
 
 // HabitService để xử lý các thao tác CRUD
 class HabitService {
@@ -1054,9 +1061,28 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
   final primaryColor = Colors.blue;
   final accentColor = const Color(0xFF2196F3);
 
+  Future<void> requestNotificationPermissions() async {
+    if (Platform.isAndroid) {
+      // Kiểm tra quyền thông báo
+      final bool? granted = await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.areNotificationsEnabled();
+
+      print('Quyền thông báo: ${granted ?? false}');
+
+      // Nếu chưa được cấp quyền, mở settings để người dùng cấp quyền
+      if (granted == false) {
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    requestNotificationPermissions();
     if (widget.initialHabitName != null) {
       if (widget.isNewHabit) {
         // Nếu là habit mới, chỉ điền tên
@@ -1111,6 +1137,90 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
     }
   }
 
+  Future<void> scheduleNotification(String title, String body, TimeOfDay time) async {
+    try {
+      // Yêu cầu quyền thông báo
+      final bool? granted = await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.areNotificationsEnabled();
+
+      if (granted  ?? false) {
+        // Tạo ID duy nhất cho mỗi thông báo
+        final int notificationId = time.hour * 60 + time.minute;
+
+        // Lấy thời gian hiện tại
+        final now = DateTime.now();
+
+        // Tạo thời gian thông báo cho ngày hôm nay
+        var scheduledDate = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          time.hour,
+          time.minute,
+        );
+
+        // Nếu thời gian đã qua, đặt cho ngày mai
+        if (scheduledDate.isBefore(now)) {
+          scheduledDate = scheduledDate.add(Duration(days: 1));
+        }
+
+        // Chuyển đổi sang timezone
+        final scheduledDateTime = tz.TZDateTime.from(scheduledDate, tz.local);
+
+        // Cấu hình chi tiết thông báo
+        const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+          'habit_reminder_channel', // ID kênh
+          'Habit Reminders', // Tên kênh
+          channelDescription: 'Thông báo nhắc nhở thói quen',
+          importance: Importance.max,
+          priority: Priority.high,
+          sound: RawResourceAndroidNotificationSound('notification'),
+          enableVibration: true,
+          playSound: true,
+          showWhen: true,
+          enableLights: true,
+
+        );
+
+        const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+
+        // Lên lịch thông báo lặp lại hàng ngày
+        await flutterLocalNotificationsPlugin.zonedSchedule(
+          notificationId,
+          title,
+          body,
+          scheduledDateTime,
+          platformChannelSpecifics,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time, // Lặp lại hàng ngày
+        );
+
+        print('Đã lên lịch thông báo cho ${time.hour}:${time.minute}');
+      }
+      else {
+        print('Chưa được cấp quyền thông báo');
+        // Yêu cầu cấp quyền
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
+      }
+    } catch (e) {
+      print('Lỗi khi lên lịch thông báo: $e');
+    }
+  }
+
+  Future<void> cancelNotifications() async {
+    for (var reminder in reminderTimes) {
+      final notificationId = reminder.hour * 60 + reminder.minute;
+      await flutterLocalNotificationsPlugin.cancel(notificationId);
+    }
+  }
+
   Future<void> _saveHabit() async {
     if (!_validateInputs()) return;
 
@@ -1144,6 +1254,9 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
         await _habitService.addHabit(habitData);
         _showSuccess('Đã tạo thói quen mới');
       }
+      if (hasReminders) {
+        await _scheduleNotifications();
+      }
 
       Navigator.pop(context);
     } catch (e) {
@@ -1152,6 +1265,53 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
       setState(() => _isSaving = false);
     }
   }
+  Future<void> _scheduleNotifications() async {
+    await cancelNotifications(); // Hủy thông báo cũ trước khi tạo mới
+
+    final now = DateTime.now(); // Lấy thời gian hiện tại
+
+    if (frequency == 'weekly' || frequency =='monthly') {
+      // Lặp qua các ngày trong tuần
+      for (int dayIndex = 0; dayIndex < selectedDays.length; dayIndex++) {
+        // Kiểm tra nếu ngày hiện tại là thứ 7 và thứ 7 không được chọn
+        if (now.weekday == (dayIndex + 1) && !selectedDays[dayIndex]) {
+          print('Hôm nay là thứ 7 và không được chọn, không tạo thông báo.');
+          continue; // Bỏ qua logic tạo thông báo cho ngày này
+        }
+        // Chỉ tiếp tục xử lý nếu ngày này được chọn
+        else if(now.weekday == (dayIndex + 1) && selectedDays[dayIndex]){
+          if (selectedDays[dayIndex]) {
+            for (var reminder in reminderTimes) {
+              // Tính ngày thông báo
+              final nextDay = now.add(
+                Duration(days: (dayIndex + 1 - now.weekday + 7) % 7),
+              );
+
+              // Chỉ tạo thông báo cho ngày trong tương lai hoặc hôm nay (nếu giờ còn phù hợp)
+              if (nextDay.isAfter(now) || (nextDay.isAtSameMomentAs(now))) {
+                await scheduleNotification(
+                  'Nhắc nhở: ${_habitNameController.text}',
+                  'weekly Đã đến giờ thực hiện thói quen "${_habitNameController.text}"!',
+                  TimeOfDay(hour: reminder.hour, minute: reminder.minute),
+                );
+              }
+            }
+          }
+        }
+      }
+    } else if (frequency == 'daily') {
+      for (var reminder in reminderTimes) {
+        await scheduleNotification(
+          'Nhắc nhở: ${_habitNameController.text}',
+          'daily Đã đến giờ thực hiện thói quen "${_habitNameController.text}"!',
+          TimeOfDay(hour: reminder.hour, minute: reminder.minute),
+        );
+      }
+    }
+  }
+
+
+
 
   Future<void> _deleteHabit() async {
     if (_habitId == null) return;
@@ -1177,6 +1337,7 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
     if (confirm == true) {
       try {
         await _habitService.deleteHabit(_habitId!);
+        await cancelNotifications();
         _showSuccess('Đã xóa thói quen');
         Navigator.pop(context);
       } catch (e) {
@@ -1842,15 +2003,15 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _buildTimeChip('Sáng', 'morning'),
-            // _buildTimeChip('Trưa', 'noon'),
-            _buildTimeChip('Chiều', 'afternoon'),
-            _buildTimeChip('Tối', 'evening'),
+            _buildTimeChip('Sáng', 'morning'),   // Thêm sáng
+            _buildTimeChip('Chiều', 'afternoon'), // Thêm chiều
+            _buildTimeChip('Tối', 'evening'),    // Thêm tối
           ],
         ),
       ],
     );
   }
+
 
   Widget _buildEndDateSection() {
     return Column(
@@ -1916,7 +2077,7 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
     });
   }
   Future<void> _showTimePicker() async {
-    if (reminderTimes.length >= 5) {
+    if (reminderTimes.length >= 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Tối đa 5 thời gian nhắc nhở')),
       );

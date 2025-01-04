@@ -1,6 +1,7 @@
 import 'package:bai5/Admin/Blog.dart';
 import 'package:flutter/material.dart';
 import '../Bar/habit_screen.dart';
+import '../Component/LoginFirebase.dart';
 import 'Habit_categories.dart';
 import 'admin_screen.dart';
 
@@ -44,7 +45,7 @@ class CustomDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            title: Text('Bài viết'),
+            title: Text('Quản lý danh mục thói quen'),
             leading: Icon(Icons.article),
             onTap: () {
               Navigator.push(
@@ -67,10 +68,13 @@ class CustomDrawer extends StatelessWidget {
           ),
           ListTile(
             title: Text('Đăng xuất'),
-            leading: Icon(Icons.exit_to_app),
+            leading: Icon(Icons.logout),
             onTap: () {
-              // Thêm logic đăng xuất ở đây (nếu có)
-              Navigator.pop(context);  // Đóng Drawer
+              // Điều hướng tới trang SettingsScreen khi người dùng chọn
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => LoginScreen()),
+              );
             },
           ),
         ],

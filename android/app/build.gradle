@@ -26,6 +26,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17 // Cập nhật lên Java 17
         targetCompatibility JavaVersion.VERSION_17 // Cập nhật lên Java 17
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -34,6 +35,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.bai5"
+        multiDexEnabled true
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -49,4 +51,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+ //Thêm dependencies vào đây
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
+    implementation 'com.google.firebase:firebase-auth:22.0.0'
+    implementation 'com.google.firebase:firebase-firestore:24.8.0'
 }
