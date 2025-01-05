@@ -1,5 +1,6 @@
 import 'package:bai5/Admin/admin_screen.dart';
 import 'package:bai5/Component/dashboard_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:bai5/Component/home.dart';
@@ -40,26 +41,54 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Xử lý tài khoản admin
       if (email == 'admin@gmail.com' && password == '123aA@') {
-        // Chuyển sang trang quản trị nếu tài khoản admin
-        _navigateToAdminScreen();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đăng nhập với quyền Admin!')),
+        );
+        _navigateToAdminScreen(); // Chuyển đến trang quản trị
         return;
       }
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+
+      // Đăng nhập Firebase Authentication
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      // Kiểm tra trạng thái blocked trong Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final isBlocked = userDoc.data()?['blocked'] ?? false;
+
+        if (isBlocked) {
+          // Nếu tài khoản bị chặn, đăng xuất ngay lập tức
+          await FirebaseAuth.instance.signOut();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Tài khoản của bạn đã bị chặn. Vui lòng liên hệ quản trị viên.')),
+          );
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
+      // Nếu đăng nhập thành công và không bị chặn
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Đăng nhập thành công!')),
       );
-      setState(() => _errorMessage = null);
-      _navigateToHomeScreen();
+      _navigateToHomeScreen(); // Chuyển đến trang chính
     } on FirebaseAuthException catch (e) {
+      // Xử lý lỗi đăng nhập
       _handleAuthError(e);
     } finally {
       setState(() => _isLoading = false);
     }
   }
+
 
   // Register function
   Future<void> _register() async {
@@ -71,24 +100,44 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      // Tạo tài khoản trong Firebase Authentication
+      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      setState(() => _errorMessage = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đăng kí thành công!')),
-      );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => LoginScreen()),
-      );
+
+      // Lấy thông tin người dùng sau khi đăng ký
+      User? user = userCredential.user;
+
+      if (user != null) {
+        // Lưu thêm thông tin người dùng vào Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'email': email,
+          'blocked': false, // Trạng thái mặc định là không bị chặn
+          'createdAt': FieldValue.serverTimestamp(), // Thời gian đăng ký
+        });
+
+        setState(() => _errorMessage = null);
+
+        // Hiển thị thông báo đăng ký thành công
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đăng kí thành công! Hãy đăng nhập')),
+        );
+
+        // Điều hướng về trang đăng nhập
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+        );
+      }
     } on FirebaseAuthException catch (e) {
+      // Xử lý lỗi khi đăng ký tài khoản
       _handleAuthError(e);
     } finally {
       setState(() => _isLoading = false);
     }
   }
+
 
   // Validate input
   bool isValidInput(String email, String password) {
